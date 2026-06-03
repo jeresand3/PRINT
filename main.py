@@ -93,26 +93,33 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
     # Trigger native platform restriction APIs
     await member.timeout(time_delta, reason=reason)
 
+    # 1. Direct raw asset image links (Trying lowercase .png first)
+    img_url = "https://githubusercontent.com"
+    
     try:
-        # 1. Fetch the raw asset image data into live system memory streams
-        img_url = "https://githubusercontent.com"
         response = requests.get(img_url, timeout=10)
         
-        # 2. Package the stream as a direct attachment to bypass Discord's URL cache glitch
+        # If the file wasn't found (404), try checking uppercase extension variant
+        if response.status_code == 404:
+            img_url_upper = "https://githubusercontent.com"
+            response = requests.get(img_url_upper, timeout=10)
+
+        # If both fail, send the error directly to Discord chat
+        if response.status_code != 200:
+            await ctx.send(f"⚠️ Image Download Failed! Web status code: `{response.status_code}`. Check file name casing on GitHub.", view=TimeoutButtons(member))
+            return
+        
+        # 2. Package the valid stream data as a direct file attachment
         image_stream = io.BytesIO(response.content)
         discord_file = discord.File(fp=image_stream, filename="timeout_card.png")
 
-        # 3. Embed references the direct attachment structure cleanly
         embed = discord.Embed(color=discord.Color.from_str("#0d0f11"))
         embed.set_image(url="attachment://timeout_card.png")
 
-        # Post single image message container block along with the operational button
         await ctx.send(file=discord_file, embed=embed, view=TimeoutButtons(member))
 
     except Exception as e:
-        print(f"Attachment processing fallback trigger: {e}")
-        backup_embed = discord.Embed(description=f"**{member.name}** timed out.", color=discord.Color.from_str("#00e676"))
-        await ctx.send(embed=backup_embed, view=TimeoutButtons(member))
+        await ctx.send(f"⚠️ System Error trying to build image: `{str(e)}`", view=TimeoutButtons(member))
 
 
 bot.run(os.environ["DISCORD_TOKEN"])
