@@ -1,13 +1,16 @@
 import datetime
 import http.server
+import io
 import os
 import re
 import threading
+import requests
 import discord
 from discord.ext import commands
+from PIL import Image, ImageDraw, ImageFont
 
 
-# 1. Create a tiny heartbeat web server to stop Railway from killing the bot
+# 1. Heartbeat web server to keep the hosting platform active
 class HeartbeatHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -23,10 +26,9 @@ def run_web_server():
     server.serve_forever()
 
 
-# Start the web heartbeat in a background loop thread
 threading.Thread(target=run_web_server, daemon=True).start()
 
-# 2. Setup access privileges using standard dictionary mapping
+# 2. Configure standard bot application connectivity permissions
 intents = discord.Intents.default()
 setattr(intents, 'members', True)
 setattr(intents, 'message_content', True)
@@ -34,13 +36,11 @@ setattr(intents, 'message_content', True)
 bot = commands.Bot(command_prefix="$", intents=intents)
 
 
-# Helper function to check if a user has an authorized staff role name
 def is_authorized_staff(member: discord.Member) -> bool:
     allowed_roles = {"owner", "administrator", "sub administrator", "staff access"}
     return any(role.name.lower() in allowed_roles for role in member.roles)
 
 
-# Helper function to parse human time formats like "10h", "30m", "1d" into actual time durations
 def parse_duration(duration_str: str) -> datetime.timedelta | None:
     match = re.match(r"(\d+)([smhd])", duration_str.lower())
     if not match:
@@ -55,8 +55,6 @@ async def on_ready():
     current_user = bot.user
     if current_user is not None:
         print(f"⚡ SYSTEM ACTIVE: {current_user.name} is online!")
-        print("Connected successfully to Discord.")
-        print("==================================================")
 
 
 # noinspection PySpellChecking
@@ -64,97 +62,92 @@ async def on_ready():
 async def inrole(ctx: commands.Context, *, role_name: str = "Status"):
     if ctx.guild is None:
         return
-
     current_guild = ctx.guild
-    assert current_guild is not None
-
+    # noinspection PyProtectedMember
     role = discord.utils.find(lambda r: str(r.name).lower() == role_name.lower(), current_guild.roles)
-
     if not role:
-        await ctx.send(f"❌ Role '{role_name}' not found. Make sure it exists in Discord Server Settings!")
+        await ctx.send(f"❌ Role '{role_name}' not found.")
         return
-
     server_members = list(role.members)
-
     if not server_members:
-        embed = discord.Embed(
-            title=f"👑 Status Directory: {str(role.name)}",
-            description="Total active operators holding this tier: **0**\n\nNo members currently assigned.",
-            color=discord.Color.from_str("#00FFC4")
-        )
+        embed = discord.Embed(title=f"Directory: {str(role.name)}", description="0 operators active.", color=discord.Color.from_str("#00FFC4"))
         await ctx.send(embed=embed)
         return
-
     member_list = "\n".join([f"• {str(m.name)}" for m in server_members])
-
-    embed = discord.Embed(
-        title=f"👑 Status Directory: {str(role.name)}",
-        description=f"Total active operators holding this tier: **{len(server_members)}**\n\n{member_list}",
-        color=discord.Color.from_str("#00FFC4")
-    )
+    embed = discord.Embed(title=f"Directory: {str(role.name)}", description=f"Total: {len(server_members)}\n\n{member_list}", color=discord.Color.from_str("#00FFC4"))
     await ctx.send(embed=embed)
 
 
+# Operational view structure providing a single early-release option button
+class TimeoutButtons(discord.ui.View):
+    def __init__(self, target_member: discord.Member):
+        super().__init__(timeout=None)
+        self.target_member: discord.Member = target_member
+
+    # noinspection PySpellChecking
+    @discord.ui.button(label="Untimeout", style=discord.ButtonStyle.green)
+    async def untimeout_callback(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        if not isinstance(interaction.user, discord.Member) or not is_authorized_staff(interaction.user):
+            await interaction.response.send_message("❌ Staff only permission!", ephemeral=True)
+            return
+        await self.target_member.timeout(None)
+        await interaction.response.send_message(f"✅ {self.target_member.mention} untimed out early by {interaction.user.mention}!")
+
+
 @bot.command()
-async def timeout(ctx: commands.Context, member: discord.Member, duration_str: str, *,
-                  reason: str = "No reason provided"):
+async def timeout(ctx: commands.Context, member: discord.Member, duration_str: str, *, reason: str = "No reason provided"):
     if ctx.guild is None or not isinstance(ctx.author, discord.Member):
         return
-
-    # Check custom role list permissions before running code
     if not is_authorized_staff(ctx.author):
-        await ctx.send("❌ You do not have permission to use this command!")
+        await ctx.send("❌ Permission denied!")
         return
-
     time_delta = parse_duration(duration_str)
     if not time_delta:
-        await ctx.send("❌ Invalid duration format! Use formats like `10h`, `30m`, or `1d`.")
+        await ctx.send("❌ Use formats like `10h` or `30m`.")
         return
 
-    # Apply native Discord timeout restrictions
-    # Apply native Discord timeout restrictions
+    # Trigger native platform restriction APIs
     await member.timeout(time_delta, reason=reason)
 
-    # 1. Your direct GitHub repository image link
-    card_image_url = "https://githubusercontent.com"
+    try:
+        # Pull your newly uploaded card asset directly from the GitHub repository CDN path
+        img_url = "https://githubusercontent.com"
+        response = requests.get(img_url, timeout=10)
+        img = Image.open(io.BytesIO(response.content)).convert("RGB")
+        draw = ImageDraw.Draw(img)
 
-    # 2. Build the embed cleanly so only the custom image asset shows up
-    embed = discord.Embed(color=discord.Color.from_str("#0d0f11"))
-    embed.set_image(url=card_image_url)
+        try:
+            font = ImageFont.truetype("DejaVuSans-Bold.ttf", 26)
+            small_font = ImageFont.truetype("DejaVuSans.ttf", 20)
+        except IOError:
+            font = ImageFont.load_default()
+            small_font = ImageFont.load_default()
 
-    # Create interactive button click handlers
-    class TimeoutButtons(discord.ui.View):
-        def __init__(self):
-            super().__init__(timeout=None)
+        # Dynamic overlay placement plots perfectly centered matching your box layout grids
+        # 1. Main target user placement container fields
+        draw.text((550, 215), f"@{member.name}", fill="#00e676", font=font, anchor="mm")
+        draw.text((550, 255), f"ID: {member.id}", fill="#ffffff", font=small_font, anchor="mm")
+        
+        # 2. Lower category container data slots (Moderator, Duration, Reason)
+        draw.text((215, 415), f"@{ctx.author.name}", fill="#00e676", font=font, anchor="mm")
+        draw.text((550, 415), f"{duration_str}", fill="#ffffff", font=font, anchor="mm")
+        draw.text((885, 415), f"{reason}", fill="#ffffff", font=small_font, anchor="mm")
 
-        # noinspection PySpellChecking
-        @discord.ui.button(label="Untimeout", style=discord.ButtonStyle.green)
-        async def untimeout_callback(self, interaction: discord.Interaction, _button: discord.ui.Button):
-            if not isinstance(interaction.user, discord.Member) or not is_authorized_staff(interaction.user):
-                await interaction.response.send_message("❌ Staff only permission!", ephemeral=True)
-                return
+        # Compile final structural frame buffer data arrays
+        final_buffer = io.BytesIO()
+        img.save(final_buffer, format="PNG")
+        final_buffer.seek(0)
+        discord_file = discord.File(final_buffer, filename="timeout_card_output.png")
 
-            await member.timeout(None)
-            await interaction.response.send_message(
-                f"✅ {member.mention} has been untimed out early by {interaction.user.mention}!")
+        embed = discord.Embed(color=discord.Color.from_str("#0d0f11"))
+        embed.set_image(url="attachment://timeout_card_output.png")
 
-    # Sends the image template with the button attached perfectly below it
-    await ctx.send(embed=embed, view=TimeoutButtons())
+        await ctx.send(file=discord_file, embed=embed, view=TimeoutButtons(member))
 
-
-    # Sends the image template with the button attached perfectly below it
-    await ctx.send(embed=embed, view=TimeoutButtons())
-
-
-# The error handler handles misformatted text parameters seamlessly
-@timeout.error
-async def timeout_error(ctx: commands.Context, error: Exception):
-    if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(
-            "❌ **Incorrect format!** Please use: `$timeout @member [duration] [reason]`\n*Example:* `$timeout @Adam 10h rule breaking`")
-    else:
-        await ctx.send(f"❌ An error occurred: {str(error)}")
+    except Exception as e:
+        print(f"Drawing pipeline error fallback log execution: {e}")
+        backup_embed = discord.Embed(description=f"**{member.name}** timed out. Image failed.", color=discord.Color.from_str("#00e676"))
+        await ctx.send(embed=backup_embed, view=TimeoutButtons(member))
 
 
-# Run the bot instance seamlessly using Railway's environment configurations
 bot.run(os.environ["DISCORD_TOKEN"])
