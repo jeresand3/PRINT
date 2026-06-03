@@ -6,6 +6,7 @@ import threading
 import discord
 from discord.ext import commands
 
+
 # 1. Create a tiny heartbeat web server to stop Railway from killing the bot
 class HeartbeatHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -14,12 +15,13 @@ class HeartbeatHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"SYSTEM ONLINE")
 
-# noinspection PyPep8Naming
+
 def run_web_server():
     port = int(os.environ.get("PORT", 8080))
     # noinspection PyTypeChecker
     server = http.server.HTTPServer(('0.0.0.0', port), HeartbeatHandler)
     server.serve_forever()
+
 
 # Start the web heartbeat in a background loop thread
 threading.Thread(target=run_web_server, daemon=True).start()
@@ -31,10 +33,12 @@ setattr(intents, 'message_content', True)
 
 bot = commands.Bot(command_prefix="$", intents=intents)
 
+
 # Helper function to check if a user has an authorized staff role name
 def is_authorized_staff(member: discord.Member) -> bool:
     allowed_roles = {"owner", "administrator", "sub administrator", "staff access"}
     return any(role.name.lower() in allowed_roles for role in member.roles)
+
 
 # Helper function to parse human time formats like "10h", "30m", "1d" into actual time durations
 def parse_duration(duration_str: str) -> datetime.timedelta | None:
@@ -45,6 +49,7 @@ def parse_duration(duration_str: str) -> datetime.timedelta | None:
     units = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}
     return datetime.timedelta(**{units[unit]: amount})
 
+
 @bot.event
 async def on_ready():
     current_user = bot.user
@@ -53,23 +58,24 @@ async def on_ready():
         print("Connected successfully to Discord.")
         print("==================================================")
 
+
 # noinspection PySpellChecking
 @bot.command()
 async def inrole(ctx: commands.Context, *, role_name: str = "Status"):
     if ctx.guild is None:
         return
-        
+
     current_guild = ctx.guild
     assert current_guild is not None
-    
+
     role = discord.utils.find(lambda r: str(r.name).lower() == role_name.lower(), current_guild.roles)
-    
+
     if not role:
         await ctx.send(f"❌ Role '{role_name}' not found. Make sure it exists in Discord Server Settings!")
         return
-        
+
     server_members = list(role.members)
-    
+
     if not server_members:
         embed = discord.Embed(
             title=f"👑 Status Directory: {str(role.name)}",
@@ -78,9 +84,9 @@ async def inrole(ctx: commands.Context, *, role_name: str = "Status"):
         )
         await ctx.send(embed=embed)
         return
-        
+
     member_list = "\n".join([f"• {str(m.name)}" for m in server_members])
-    
+
     embed = discord.Embed(
         title=f"👑 Status Directory: {str(role.name)}",
         description=f"Total active operators holding this tier: **{len(server_members)}**\n\n{member_list}",
@@ -88,8 +94,10 @@ async def inrole(ctx: commands.Context, *, role_name: str = "Status"):
     )
     await ctx.send(embed=embed)
 
+
 @bot.command()
-async def timeout(ctx: commands.Context, member: discord.Member, duration_str: str, *, reason: str = "No reason provided"):
+async def timeout(ctx: commands.Context, member: discord.Member, duration_str: str, *,
+                  reason: str = "No reason provided"):
     if ctx.guild is None or not isinstance(ctx.author, discord.Member):
         return
 
@@ -104,19 +112,15 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
         return
 
     # Apply native Discord timeout restrictions
+    # Apply native Discord timeout restrictions
     await member.timeout(time_delta, reason=reason)
 
-    # Build the structural visual card layout without the thumbnail line
-    embed = discord.Embed(
-        title="⏱️ User Timed Out",
-        description=f"**{member.name}** has been timed out.",
-        color=discord.Color.from_str("#FEE75C")
-    )
-    embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
-    embed.add_field(name="Duration", value=duration_str, inline=True)
-    embed.add_field(name="Reason", value=reason, inline=False)
-    embed.add_field(name="Method", value="Staff Permission", inline=False)
-    embed.set_footer(text=f"User ID: {member.id} | PRINT Bot")
+    # 1. Your direct GitHub repository image link
+    card_image_url = "https://githubusercontent.com"
+
+    # 2. Build the embed cleanly so only the custom image asset shows up
+    embed = discord.Embed(color=discord.Color.from_str("#0d0f11"))
+    embed.set_image(url=card_image_url)
 
     # Create interactive button click handlers
     class TimeoutButtons(discord.ui.View):
@@ -129,19 +133,28 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
             if not isinstance(interaction.user, discord.Member) or not is_authorized_staff(interaction.user):
                 await interaction.response.send_message("❌ Staff only permission!", ephemeral=True)
                 return
-            
-            await member.timeout(None) 
-            await interaction.response.send_message(f"✅ {member.mention} has been untimed out early by {interaction.user.mention}!")
 
+            await member.timeout(None)
+            await interaction.response.send_message(
+                f"✅ {member.mention} has been untimed out early by {interaction.user.mention}!")
+
+    # Sends the image template with the button attached perfectly below it
     await ctx.send(embed=embed, view=TimeoutButtons())
+
+
+    # Sends the image template with the button attached perfectly below it
+    await ctx.send(embed=embed, view=TimeoutButtons())
+
 
 # The error handler handles misformatted text parameters seamlessly
 @timeout.error
 async def timeout_error(ctx: commands.Context, error: Exception):
     if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send("❌ **Incorrect format!** Please use: `$timeout @member [duration] [reason]`\n*Example:* `$timeout @Adam 10h rule breaking`")
+        await ctx.send(
+            "❌ **Incorrect format!** Please use: `$timeout @member [duration] [reason]`\n*Example:* `$timeout @Adam 10h rule breaking`")
     else:
         await ctx.send(f"❌ An error occurred: {str(error)}")
 
-# bot.run remains perfectly at the bottom container margin
+
+# Run the bot instance seamlessly using Railway's environment configurations
 bot.run(os.environ["DISCORD_TOKEN"])
