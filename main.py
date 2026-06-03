@@ -1,8 +1,10 @@
 import datetime
 import http.server
+import io
 import os
 import re
 import threading
+import requests
 import discord
 from discord.ext import commands
 
@@ -64,7 +66,6 @@ class TimeoutButtons(discord.ui.View):
     # noinspection PySpellChecking
     @discord.ui.button(label="Untimeout", style=discord.ButtonStyle.green)
     async def untimeout_callback(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        # Explicit type check to satisfy PyCharm's rigid type tracker
         if not isinstance(interaction.user, discord.Member):
             return
             
@@ -72,7 +73,6 @@ class TimeoutButtons(discord.ui.View):
             await interaction.response.send_message("❌ Staff only permission!", ephemeral=True)
             return
         
-        # Accessing the variable explicitly via type cast to avoid 'BaseView' warnings
         member_to_untimeout: discord.Member = getattr(self, "target_member")
         await member_to_untimeout.timeout(None)
         await interaction.response.send_message(f"✅ {member_to_untimeout.mention} untimed out early by {interaction.user.mention}!")
@@ -93,15 +93,26 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
     # Trigger native platform restriction APIs
     await member.timeout(time_delta, reason=reason)
 
-    # Pull your uploaded card asset directly from the GitHub repository link
-    img_url = "https://githubusercontent.com"
+    try:
+        # 1. Fetch the raw asset image data into live system memory streams
+        img_url = "https://githubusercontent.com"
+        response = requests.get(img_url, timeout=10)
+        
+        # 2. Package the stream as a direct attachment to bypass Discord's URL cache glitch
+        image_stream = io.BytesIO(response.content)
+        discord_file = discord.File(fp=image_stream, filename="timeout_card.png")
 
-    # Package clean visual wrapper structures
-    embed = discord.Embed(color=discord.Color.from_str("#0d0f11"))
-    embed.set_image(url=img_url)
+        # 3. Embed references the direct attachment structure cleanly
+        embed = discord.Embed(color=discord.Color.from_str("#0d0f11"))
+        embed.set_image(url="attachment://timeout_card.png")
 
-    # Post single image message container block with exactly ONE untimeout button below it
-    await ctx.send(embed=embed, view=TimeoutButtons(member))
+        # Post single image message container block along with the operational button
+        await ctx.send(file=discord_file, embed=embed, view=TimeoutButtons(member))
+
+    except Exception as e:
+        print(f"Attachment processing fallback trigger: {e}")
+        backup_embed = discord.Embed(description=f"**{member.name}** timed out.", color=discord.Color.from_str("#00e676"))
+        await ctx.send(embed=backup_embed, view=TimeoutButtons(member))
 
 
 bot.run(os.environ["DISCORD_TOKEN"])
