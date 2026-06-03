@@ -97,13 +97,12 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
     # Apply native Discord timeout restrictions
     await member.timeout(time_delta, reason=reason)
 
-    # Build the visual card layout
+    # Build the structural visual card layout without the thumbnail line
     embed = discord.Embed(
         title="⏱️ User Timed Out",
         description=f"**{member.name}** has been timed out.",
         color=discord.Color.from_str("#FEE75C")
     )
-    embed.set_thumbnail(url="https://ibb.co") 
     embed.add_field(name="Moderator", value=ctx.author.mention, inline=True)
     embed.add_field(name="Duration", value=duration_str, inline=True)
     embed.add_field(name="Reason", value=reason, inline=False)
@@ -127,7 +126,7 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
 
     await ctx.send(embed=embed, view=TimeoutButtons())
 
-# The error handler MUST sit above bot.run
+# The error handler handles misformatted text parameters seamlessly
 @timeout.error
 async def timeout_error(ctx: commands.Context, error: Exception):
     if isinstance(error, commands.MissingRequiredArgument):
@@ -137,5 +136,5 @@ async def timeout_error(ctx: commands.Context, error: Exception):
     else:
         await ctx.send(f"❌ An error occurred: {str(error)}")
 
-# bot.run goes at the very end of the file
+# bot.run remains perfectly at the bottom container margin
 bot.run(os.environ["DISCORD_TOKEN"])
