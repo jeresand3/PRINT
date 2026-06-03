@@ -1,4 +1,3 @@
-# noinspection PyUnresolvedReferences
 import datetime
 import http.server
 import os
@@ -15,6 +14,7 @@ class HeartbeatHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"SYSTEM ONLINE")
 
+# noinspection PyPep8Naming
 def run_web_server():
     port = int(os.environ.get("PORT", 8080))
     # noinspection PyTypeChecker
@@ -30,6 +30,11 @@ setattr(intents, 'members', True)
 setattr(intents, 'message_content', True)
 
 bot = commands.Bot(command_prefix="$", intents=intents)
+
+# Helper function to check if a user has an authorized staff role name
+def is_authorized_staff(member: discord.Member) -> bool:
+    allowed_roles = {"owner", "administrator", "sub administrator", "staff access"}
+    return any(role.name.lower() in allowed_roles for role in member.roles)
 
 # Helper function to parse human time formats like "10h", "30m", "1d" into actual time durations
 def parse_duration(duration_str: str) -> datetime.timedelta | None:
@@ -84,9 +89,13 @@ async def inrole(ctx: commands.Context, *, role_name: str = "Status"):
     await ctx.send(embed=embed)
 
 @bot.command()
-@commands.has_permissions(moderate_members=True)
 async def timeout(ctx: commands.Context, member: discord.Member, duration_str: str, *, reason: str = "No reason provided"):
-    if ctx.guild is None:
+    if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+        return
+
+    # Check custom role list permissions before running code
+    if not is_authorized_staff(ctx.author):
+        await ctx.send("❌ You do not have permission to use this command!")
         return
 
     time_delta = parse_duration(duration_str)
@@ -117,7 +126,7 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
         # noinspection PySpellChecking
         @discord.ui.button(label="Untimeout", style=discord.ButtonStyle.green)
         async def untimeout_callback(self, interaction: discord.Interaction, _button: discord.ui.Button):
-            if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.moderate_members:
+            if not isinstance(interaction.user, discord.Member) or not is_authorized_staff(interaction.user):
                 await interaction.response.send_message("❌ Staff only permission!", ephemeral=True)
                 return
             
@@ -131,8 +140,6 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
 async def timeout_error(ctx: commands.Context, error: Exception):
     if isinstance(error, commands.MissingRequiredArgument):
         await ctx.send("❌ **Incorrect format!** Please use: `$timeout @member [duration] [reason]`\n*Example:* `$timeout @Adam 10h rule breaking`")
-    elif isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ You do not have permission to use this command!")
     else:
         await ctx.send(f"❌ An error occurred: {str(error)}")
 
