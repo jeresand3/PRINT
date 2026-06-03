@@ -29,7 +29,6 @@ intents = discord.Intents.default()
 setattr(intents, 'members', True)
 setattr(intents, 'message_content', True)
 
-# Changed prefix strictly to $ as requested
 bot = commands.Bot(command_prefix="$", intents=intents)
 
 # Helper function to parse human time formats like "10h", "30m", "1d" into actual time durations
@@ -128,5 +127,15 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
 
     await ctx.send(embed=embed, view=TimeoutButtons())
 
-# Securely grab the token from the environment variable configuration
+# The error handler MUST sit above bot.run
+@timeout.error
+async def timeout_error(ctx: commands.Context, error: Exception):
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send("❌ **Incorrect format!** Please use: `$timeout @member [duration] [reason]`\n*Example:* `$timeout @Adam 10h rule breaking`")
+    elif isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ You do not have permission to use this command!")
+    else:
+        await ctx.send(f"❌ An error occurred: {str(error)}")
+
+# bot.run goes at the very end of the file
 bot.run(os.environ["DISCORD_TOKEN"])
