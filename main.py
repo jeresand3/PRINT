@@ -1,10 +1,12 @@
 import datetime
 import http.server
+import io
 import os
 import re
 import threading
 import discord
 from discord.ext import commands
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 
 # 1. Heartbeat web server to keep Render active
@@ -91,14 +93,61 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
     await member.timeout(time_delta, reason=reason)
 
     try:
-        # Load the file locally from your repository structure
-        discord_file = discord.File("image_bb317f75.png", filename="timeout_card.png")
+        # Open your template background card file locally
+        base_img = Image.open("image_bb317f75.png").convert("RGBA")
+        
+        # Initialize the drawing canvas layer
+        draw = ImageDraw.Draw(base_img)
+        
+        # Load fallback built-in fonts (guaranteed not to crash Render Linux servers)
+        font = ImageFont.load_default()
+        
+        # --- DRAW THE DYNAMIC TEXT ON THE IMAGE ---
+        # The 'anchor="mm"' centers the text perfectly inside your green box boundaries
+        
+        # 1. Target User Name & ID
+        draw.text((550, 215), f"USER: @{member.name}", fill="#00e676", font=font, anchor="mm")
+        draw.text((550, 255), f"ID: {member.id}", fill="#a0a0a0", font=font, anchor="mm")
+        
+        # 2. Lower Data Boxes (Moderator, Duration, Reason)
+        draw.text((215, 415), f"@{ctx.author.name}", fill="#00e676", font=font, anchor="mm")
+        draw.text((550, 415), f"{duration_str}", fill="#ffffff", font=font, anchor="mm")
+        draw.text((885, 415), f"{reason}", fill="#ffffff", font=font, anchor="mm")
 
-        # Sends the image asset completely raw and directly into chat (removing the embed wrapper block)
-        await ctx.send(file=discord_file, view=TimeoutButtons(member))
+        # --- DYNAMIC PROFILE PICTURE INJECTION ---
+        try:
+            # Download target user's real live profile picture
+            avatar_url = member.display_avatar.with_format("png").with_size(128).url
+            import requests
+            pfp_res = requests.get(avatar_url, timeout=5)
+            pfp_img = Image.open(io.BytesIO(pfp_res.content)).convert("RGBA")
+            
+            # Resize avatar to fit perfectly into your top-right circular frame coordinates
+            pfp_img = pfp_img.resize((100, 100))
+            
+            # Create a clean round mask circle for the portrait cut
+            mask = Image.new("L", (100, 100), 0)
+            mask_draw = ImageDraw.Draw(mask)
+            mask_draw.ellipse((0, 0, 100, 100), fill=255)
+            
+            # Paste the circular avatar into your card's top-right circle placeholder location
+            base_img.paste(pfp_img, (830, 60), mask=mask)
+        except Exception as pfp_error:
+            print(f"Skipping profile avatar drawing layer: {pfp_error}")
+
+        # --- PACKAGE AND SEND THE GRAPHIC ---
+        final_buffer = io.BytesIO()
+        base_img.save(final_buffer, format="PNG")
+        final_buffer.seek(0)
+        discord_file = discord.File(fp=final_buffer, filename="dynamic_timeout.png")
+
+        embed = discord.Embed(color=0x2b2d31)
+        embed.set_image(url="attachment://dynamic_timeout.png")
+
+        await ctx.send(file=discord_file, embed=embed, view=TimeoutButtons(member))
 
     except Exception as e:
-        await ctx.send(f"⚠️ System Error reading local file: `{str(e)}`", view=TimeoutButtons(member))
+        await ctx.send(f"⚠️ System Error compiling canvas: `{str(e)}`", view=TimeoutButtons(member))
 
 
 bot.run(os.environ["DISCORD_TOKEN"])
