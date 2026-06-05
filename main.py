@@ -143,10 +143,35 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
         embed = discord.Embed(color=0x2b2d31)
         embed.set_image(url="attachment://dynamic_timeout.png")
 
-        await ctx.send(file=discord_file, embed=embed, view=TimeoutButtons(member))
+        # FIX: Passing the file object inside the files list prevents the image from appearing twice
+        await ctx.send(embed=embed, file=discord_file, view=TimeoutButtons(member))
 
     except Exception as e:
         await ctx.send(f"⚠️ System Error compiling canvas: `{str(e)}`", view=TimeoutButtons(member))
+
+
+# ==================================================
+# 🔒 LOCK CHANNEL COMMAND
+# ==================================================
+@bot.command()
+async def lock(ctx: commands.Context):
+    if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+        return
+        
+    if not is_authorized_staff(ctx.author):
+        await ctx.send("❌ Permission denied!")
+        return
+
+    current_channel = ctx.channel
+    if not isinstance(current_channel, discord.TextChannel):
+        return
+
+    try:
+        # Changes the send_messages permission to False for the baseline @everyone role
+        await current_channel.set_permissions(ctx.guild.default_role, send_messages=False, reason=f"Channel locked by {ctx.author.name}")
+        await ctx.send(f"🔒 **{current_channel.mention} has been locked down.** Members without explicit staff overrides no longer have permission to send messages here.")
+    except discord.Forbidden:
+        await ctx.send("❌ I lack the required permissions to modify permissions on this channel.")
 
 
 # ==================================================
