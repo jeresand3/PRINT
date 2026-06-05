@@ -1,15 +1,13 @@
 import datetime
 import http.server
-import io
 import os
 import re
 import threading
-import requests
 import discord
 from discord.ext import commands
 
 
-# 1. Heartbeat web server to keep the hosting platform active
+# 1. Heartbeat web server to keep Render active
 class HeartbeatHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -18,7 +16,6 @@ class HeartbeatHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"SYSTEM ONLINE")
 
 
-# noinspection PyPep8Naming
 def run_web_server():
     port = int(os.environ.get("PORT", 8080))
     # noinspection PyTypeChecker
@@ -93,25 +90,9 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
     # Trigger native platform restriction APIs
     await member.timeout(time_delta, reason=reason)
 
-    # 1. Direct raw asset image links (Trying lowercase .png first)
-    img_url = "https://githubusercontent.com"
-    
     try:
-        response = requests.get(img_url, timeout=10)
-        
-        # If the file wasn't found (404), try checking uppercase extension variant
-        if response.status_code == 404:
-            img_url_upper = "https://githubusercontent.com"
-            response = requests.get(img_url_upper, timeout=10)
-
-        # If both fail, send the error directly to Discord chat
-        if response.status_code != 200:
-            await ctx.send(f"⚠️ Image Download Failed! Web status code: `{response.status_code}`. Check file name casing on GitHub.", view=TimeoutButtons(member))
-            return
-        
-        # 2. Package the valid stream data as a direct file attachment
-        image_stream = io.BytesIO(response.content)
-        discord_file = discord.File(fp=image_stream, filename="timeout_card.png")
+        # Grabs the local image file sitting right next to main.py
+        discord_file = discord.File("image_bb317f75.png", filename="timeout_card.png")
 
         embed = discord.Embed(color=discord.Color.from_str("#0d0f11"))
         embed.set_image(url="attachment://timeout_card.png")
@@ -119,7 +100,7 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
         await ctx.send(file=discord_file, embed=embed, view=TimeoutButtons(member))
 
     except Exception as e:
-        await ctx.send(f"⚠️ System Error trying to build image: `{str(e)}`", view=TimeoutButtons(member))
+        await ctx.send(f"⚠️ System Error reading local file: `{str(e)}`", view=TimeoutButtons(member))
 
 
 bot.run(os.environ["DISCORD_TOKEN"])
