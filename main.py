@@ -10,28 +10,35 @@ from discord.ext import commands
 from PIL import Image, ImageDraw, ImageFont
 
 
-# 1. Heartbeat web server to keep Render active
+# ==================================================
+# 🌐 ROBUST WEB SERVER FOR RENDER HOSTING COMPLIANCE
+# ==================================================
 class HeartbeatHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
+    def do_GET(self) -> None:
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
         self.end_headers()
         self.wfile.write(b"SYSTEM ONLINE")
 
+    def log_message(self, format_str: str, *args: any) -> None:
+        return  # Suppress heavy terminal spamming logs on Render
 
-def run_web_server():
+
+def run_web_server() -> None:
     port = int(os.environ.get("PORT", 8080))
-    # noinspection PyTypeChecker
     server = http.server.HTTPServer(('0.0.0.0', port), HeartbeatHandler)
+    print(f"🌐 Compliance Web Server listening on port {port}...")
     server.serve_forever()
 
 
 threading.Thread(target=run_web_server, daemon=True).start()
 
-# 2. Configure standard bot application connectivity permissions
+# ==================================================
+# ⚙️ BOT CORE CONFIGURATION & PERMISSIONS
+# ==================================================
 intents = discord.Intents.default()
-setattr(intents, 'members', True)
-setattr(intents, 'message_content', True)
+intents.members = True          
+intents.message_content = True  # ⚠️ REMINDER: Keep this toggled ON in the Developer Portal!
 
 bot = commands.Bot(command_prefix="$", intents=intents)
 
@@ -51,10 +58,20 @@ def parse_duration(duration_str: str) -> datetime.timedelta | None:
 
 
 @bot.event
-async def on_ready():
-    current_user = bot.user
-    if current_user is not None:
-        print(f"⚡ SYSTEM ACTIVE: {current_user.name} is online!")
+async def on_ready() -> None:
+    if bot.user is not None:
+        print(f"⚡ SYSTEM ACTIVE: {bot.user.name} is online and processing '$' commands!")
+
+
+@bot.event
+async def on_command_error(ctx: commands.Context, error: Exception) -> None:
+    print(f"❌ Command Error Detected: {error}")
+    if isinstance(error, commands.CommandNotFound):
+        return  
+    try:
+        await ctx.send(f"⚠️ **Bot Error:** `{str(error)}`")
+    except discord.Forbidden:
+        pass
 
 
 # Operational view structure providing a single early-release option button
@@ -63,35 +80,33 @@ class TimeoutButtons(discord.ui.View):
         super().__init__(timeout=None)
         self.target_member: discord.Member = target_member
 
-    # noinspection PySpellChecking
     @discord.ui.button(label="Untimeout", style=discord.ButtonStyle.green)
-    async def untimeout_callback(self, interaction: discord.Interaction, _button: discord.ui.Button):
+    async def untimeout_callback(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
         if not isinstance(interaction.user, discord.Member):
             return
-
+            
         if not is_authorized_staff(interaction.user):
             await interaction.response.send_message("❌ Staff only permission!", ephemeral=True)
             return
-
+        
         try:
-            member_to_untimeout: discord.Member = getattr(self, "target_member")
-            await member_to_untimeout.timeout(None)
-            await interaction.response.send_message(
-                f"✅ {member_to_untimeout.mention} untimed out early by {interaction.user.mention}!")
+            await self.target_member.timeout(None)
+            await interaction.response.send_message(f"✅ {self.target_member.mention} untimed out early by {interaction.user.mention}!")
         except discord.Forbidden:
-            await interaction.response.send_message("❌ Bot doesn't have permissions to untimeout this user!",
-                                                    ephemeral=True)
+            await interaction.response.send_message("❌ Bot doesn't have permissions to untimeout this user!", ephemeral=True)
 
 
+# ==================================================
+# ⏰ PREFIX COMMAND: $TIMEOUT
+# ==================================================
 @bot.command()
-async def timeout(ctx: commands.Context, member: discord.Member, duration_str: str, *,
-                  reason: str = "No reason provided"):
+async def timeout(ctx: commands.Context, member: discord.Member, duration_str: str, *, reason: str = "No reason provided") -> None:
     if ctx.guild is None or not isinstance(ctx.author, discord.Member):
         return
     if not is_authorized_staff(ctx.author):
-        await ctx.send("❌ Permission denied!")
+        await ctx.send("❌ Permission denied! You do not have an authorized staff role.")
         return
-
+    
     if member.top_role >= ctx.guild.me.top_role:
         await ctx.send("❌ Cannot timeout this member! Their role level is equal to or higher than the bot's role.")
         return
@@ -114,22 +129,20 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
         base_img = Image.open("image_bb317f75.png").convert("RGBA")
         draw = ImageDraw.Draw(base_img)
         font = ImageFont.load_default()
-
-        # --- DRAW THE DYNAMIC TEXT ON THE IMAGE ---
+        
         draw.text((550, 215), f"USER: @{member.name}", fill="#00e676", font=font, anchor="mm")
         draw.text((550, 255), f"ID: {member.id}", fill="#a0a0a0", font=font, anchor="mm")
-
+        
         draw.text((215, 415), f"@{ctx.author.name}", fill="#00e676", font=font, anchor="mm")
         draw.text((550, 415), f"{duration_str}", fill="#ffffff", font=font, anchor="mm")
         draw.text((885, 415), f"{reason}", fill="#ffffff", font=font, anchor="mm")
 
-        # --- DYNAMIC PROFILE PICTURE INJECTION ---
         try:
             avatar_url = member.display_avatar.with_format("png").with_size(128).url
             req = urllib.request.Request(avatar_url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=5) as pfp_res:
                 pfp_img = Image.open(io.BytesIO(pfp_res.read())).convert("RGBA")
-
+            
             pfp_img = pfp_img.resize((100, 100))
             mask = Image.new("L", (100, 100), 0)
             mask_draw = ImageDraw.Draw(mask)
@@ -147,19 +160,89 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
         embed.set_image(url="attachment://dynamic_timeout.png")
 
         await ctx.send(file=discord_file, embed=embed, view=TimeoutButtons(member))
-
     except Exception as e:
         await ctx.send(f"⚠️ System Error compiling canvas: `{str(e)}`", view=TimeoutButtons(member))
 
 
 # ==================================================
-# 💥 SILENT OWNER-ONLY NUKE COMMAND WITH REDIRECT
+# 🔒 PREFIX COMMAND: $LOCK
 # ==================================================
 @bot.command()
-async def nuke(ctx: commands.Context):
+async def lock(ctx: commands.Context, *, reason: str = "Spam/Inappropriate content cleanup") -> None:
     if ctx.guild is None or not isinstance(ctx.author, discord.Member):
         return
+    if not is_authorized_staff(ctx.author):
+        await ctx.send("❌ Permission denied! You do not have an authorized staff role.")
+        return
 
+    current_channel = ctx.channel
+    if not isinstance(current_channel, discord.TextChannel):
+        return
+
+    try:
+        default_role = ctx.guild.default_role
+        overwrite = current_channel.overwrites_for(default_role)
+        
+        # Modify permissions
+        overwrite.send_messages = False
+        
+        await current_channel.set_permissions(default_role, overwrite=overwrite, reason=f"Locked by {ctx.author.name}")
+        
+        embed = discord.Embed(
+            title="🔒 Channel Locked", 
+            description=f"This channel has been temporarily locked by staff.\n**Reason:** {reason}", 
+            color=0xff5555
+        )
+        await ctx.send(embed=embed)
+    except discord.Forbidden:
+        await ctx.send("❌ The bot does not have permissions to manage channel permissions. Check bot roles.")
+    except Exception as e:
+        await ctx.send(f"⚠️ Lock Error: `{str(e)}`")
+
+
+# ==================================================
+# 🔓 PREFIX COMMAND: $UNLOCK
+# ==================================================
+@bot.command()
+async def unlock(ctx: commands.Context) -> None:
+    if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+        return
+    if not is_authorized_staff(ctx.author):
+        await ctx.send("❌ Permission denied! You do not have an authorized staff role.")
+        return
+
+    current_channel = ctx.channel
+    if not isinstance(current_channel, discord.TextChannel):
+        return
+
+    try:
+        default_role = ctx.guild.default_role
+        overwrite = current_channel.overwrites_for(default_role)
+        
+        # Reset permissions
+        overwrite.send_messages = None
+        
+        await current_channel.set_permissions(default_role, overwrite=overwrite, reason=f"Unlocked by {ctx.author.name}")
+        
+        embed = discord.Embed(
+            title="🔓 Channel Unlocked", 
+            description="Chat restrictions lifted. You may speak freely again.", 
+            color=0x55ff55
+        )
+        await ctx.send(embed=embed)
+    except discord.Forbidden:
+        await ctx.send("❌ The bot does not have permissions to manage channel permissions. Check bot roles.")
+    except Exception as e:
+        await ctx.send(f"⚠️ Unlock Error: `{str(e)}`")
+
+
+# ==================================================
+# 💥 PREFIX COMMAND: $NUKE (SERVER OWNER ONLY)
+# ==================================================
+@bot.command()
+async def nuke(ctx: commands.Context) -> None:
+    if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+        return
     if ctx.author != ctx.guild.owner:
         await ctx.send("❌ Security Access Denied: Only the Server Owner can use `$nuke`!")
         return
@@ -168,21 +251,3 @@ async def nuke(ctx: commands.Context):
     if not isinstance(current_channel, discord.TextChannel):
         return
 
-    # Find the #announcements channel in the server automatically
-    announcements_channel = discord.utils.get(ctx.guild.text_channels, name="announcements")
-
-    # 1. Clone the configuration of the current channel
-    new_channel = await current_channel.clone(reason=f"Channel nuked by {ctx.author.name}")
-
-    # 2. Place the new clean channel at the exact same position
-    await new_channel.edit(position=current_channel.position)
-
-    # 3. Permanently erase the old chat history channel
-    await current_channel.delete(reason="Nuke command executed.")
-
-    # 4. If #announcements exists, send a link to redirect users out smoothly
-    if announcements_channel is not None:
-        # Sends a message in #announcements pointing to the new channel copy to draw active users out
-        await announcements_channel.send(
-            f"🔔 **Attention:** #{new_channel.name} has been cleared. Head over here -> {announcements_channel.mention}!"
-        )
