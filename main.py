@@ -4,9 +4,10 @@ import io
 import os
 import re
 import threading
+import urllib.request
 import discord
 from discord.ext import commands
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont
 
 
 # 1. Heartbeat web server to keep Render active
@@ -103,8 +104,6 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
         font = ImageFont.load_default()
         
         # --- DRAW THE DYNAMIC TEXT ON THE IMAGE ---
-        # The 'anchor="mm"' centers the text perfectly inside your green box boundaries
-        
         # 1. Target User Name & ID
         draw.text((550, 215), f"USER: @{member.name}", fill="#00e676", font=font, anchor="mm")
         draw.text((550, 255), f"ID: {member.id}", fill="#a0a0a0", font=font, anchor="mm")
@@ -116,11 +115,11 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
 
         # --- DYNAMIC PROFILE PICTURE INJECTION ---
         try:
-            # Download target user's real live profile picture
+            # Download target user's real live profile picture using Python's built-in urllib tool
             avatar_url = member.display_avatar.with_format("png").with_size(128).url
-            import requests
-            pfp_res = requests.get(avatar_url, timeout=5)
-            pfp_img = Image.open(io.BytesIO(pfp_res.content)).convert("RGBA")
+            req = urllib.request.Request(avatar_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5) as pfp_res:
+                pfp_img = Image.open(io.BytesIO(pfp_res.read())).convert("RGBA")
             
             # Resize avatar to fit perfectly into your top-right circular frame coordinates
             pfp_img = pfp_img.resize((100, 100))
