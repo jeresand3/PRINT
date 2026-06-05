@@ -68,27 +68,30 @@ class TimeoutButtons(discord.ui.View):
     async def untimeout_callback(self, interaction: discord.Interaction, _button: discord.ui.Button):
         if not isinstance(interaction.user, discord.Member):
             return
-            
+
         if not is_authorized_staff(interaction.user):
             await interaction.response.send_message("❌ Staff only permission!", ephemeral=True)
             return
-        
+
         try:
             member_to_untimeout: discord.Member = getattr(self, "target_member")
             await member_to_untimeout.timeout(None)
-            await interaction.response.send_message(f"✅ {member_to_untimeout.mention} untimed out early by {interaction.user.mention}!")
+            await interaction.response.send_message(
+                f"✅ {member_to_untimeout.mention} untimed out early by {interaction.user.mention}!")
         except discord.Forbidden:
-            await interaction.response.send_message("❌ Bot doesn't have permissions to untimeout this user!", ephemeral=True)
+            await interaction.response.send_message("❌ Bot doesn't have permissions to untimeout this user!",
+                                                    ephemeral=True)
 
 
 @bot.command()
-async def timeout(ctx: commands.Context, member: discord.Member, duration_str: str, *, reason: str = "No reason provided"):
+async def timeout(ctx: commands.Context, member: discord.Member, duration_str: str, *,
+                  reason: str = "No reason provided"):
     if ctx.guild is None or not isinstance(ctx.author, discord.Member):
         return
     if not is_authorized_staff(ctx.author):
         await ctx.send("❌ Permission denied!")
         return
-    
+
     if member.top_role >= ctx.guild.me.top_role:
         await ctx.send("❌ Cannot timeout this member! Their role level is equal to or higher than the bot's role.")
         return
@@ -111,11 +114,11 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
         base_img = Image.open("image_bb317f75.png").convert("RGBA")
         draw = ImageDraw.Draw(base_img)
         font = ImageFont.load_default()
-        
+
         # --- DRAW THE DYNAMIC TEXT ON THE IMAGE ---
         draw.text((550, 215), f"USER: @{member.name}", fill="#00e676", font=font, anchor="mm")
         draw.text((550, 255), f"ID: {member.id}", fill="#a0a0a0", font=font, anchor="mm")
-        
+
         draw.text((215, 415), f"@{ctx.author.name}", fill="#00e676", font=font, anchor="mm")
         draw.text((550, 415), f"{duration_str}", fill="#ffffff", font=font, anchor="mm")
         draw.text((885, 415), f"{reason}", fill="#ffffff", font=font, anchor="mm")
@@ -126,7 +129,7 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
             req = urllib.request.Request(avatar_url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=5) as pfp_res:
                 pfp_img = Image.open(io.BytesIO(pfp_res.read())).convert("RGBA")
-            
+
             pfp_img = pfp_img.resize((100, 100))
             mask = Image.new("L", (100, 100), 0)
             mask_draw = ImageDraw.Draw(mask)
@@ -150,14 +153,13 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
 
 
 # ==================================================
-# 💥 EXCLUSIVE OWNER-ONLY NUKE COMMAND
+# 💥 SILENT OWNER-ONLY NUKE COMMAND WITH REDIRECT
 # ==================================================
 @bot.command()
 async def nuke(ctx: commands.Context):
     if ctx.guild is None or not isinstance(ctx.author, discord.Member):
         return
 
-    # Check if the person using the command is the Server Owner
     if ctx.author != ctx.guild.owner:
         await ctx.send("❌ Security Access Denied: Only the Server Owner can use `$nuke`!")
         return
@@ -166,26 +168,21 @@ async def nuke(ctx: commands.Context):
     if not isinstance(current_channel, discord.TextChannel):
         return
 
+    # Find the #announcements channel in the server automatically
+    announcements_channel = discord.utils.get(ctx.guild.text_channels, name="announcements")
+
     # 1. Clone the configuration of the current channel
     new_channel = await current_channel.clone(reason=f"Channel nuked by {ctx.author.name}")
-    
-    # 2. Place the new clean channel at the exact same location/position
+
+    # 2. Place the new clean channel at the exact same position
     await new_channel.edit(position=current_channel.position)
 
-    # 3. Permanently erase the old clogged chat history channel
+    # 3. Permanently erase the old chat history channel
     await current_channel.delete(reason="Nuke command executed.")
 
-    # 4. Post a cool victory confirmation block in the new copy
-    embed = discord.Embed(
-        title="💥 Channel Nuked",
-        description=f"This channel was completely wiped and recreated by {ctx.author.mention}.",
-        color=discord.Color.from_str("#00e676")
-    )
-    embed.set_image(url="https://imgur.com")
-    
-    # Sends it and auto-deletes the message after 10 seconds to keep it perfectly clean
-    await new_channel.send(embed=embed, delete_after=10)
-
-
-# Bot run always remains at the absolute bottom line container boundary
-bot.run(os.environ["DISCORD_TOKEN"])
+    # 4. If #announcements exists, send a link to redirect users out smoothly
+    if announcements_channel is not None:
+        # Sends a message in #announcements pointing to the new channel copy to draw active users out
+        await announcements_channel.send(
+            f"🔔 **Attention:** #{new_channel.name} has been cleared. Head over here -> {announcements_channel.mention}!"
+        )
