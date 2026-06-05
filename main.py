@@ -3,6 +3,8 @@ import http.server
 import io
 import os
 import re
+import traceback
+import sys
 import threading
 import urllib.request
 import discord
@@ -11,7 +13,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 # ==================================================
-# 🌐 ROBUST WEB SERVER FOR RENDER HOSTING COMPLIANCE
+# 🌐 WEB SERVER FOR RENDER HOSTING COMPLIANCE
 # ==================================================
 class HeartbeatHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self) -> None:
@@ -21,7 +23,7 @@ class HeartbeatHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"SYSTEM ONLINE")
 
     def log_message(self, format_str: str, *args: any) -> None:
-        return  # Suppress heavy terminal spamming logs on Render
+        return
 
 
 def run_web_server() -> None:
@@ -38,7 +40,7 @@ threading.Thread(target=run_web_server, daemon=True).start()
 # ==================================================
 intents = discord.Intents.default()
 intents.members = True          
-intents.message_content = True  # ⚠️ REMINDER: Keep this toggled ON in the Developer Portal!
+intents.message_content = True  
 
 bot = commands.Bot(command_prefix="$", intents=intents)
 
@@ -74,18 +76,15 @@ async def on_command_error(ctx: commands.Context, error: Exception) -> None:
         pass
 
 
-# Operational view structure providing a single early-release option button
 class TimeoutButtons(discord.ui.View):
     def __init__(self, target_member: discord.Member):
         super().__init__(timeout=None)
-        self.target_member: discord.Member = target_member
+        self.target_member = target_member
 
     @discord.ui.button(label="Untimeout", style=discord.ButtonStyle.green)
     async def untimeout_callback(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
-        if not isinstance(interaction.user, discord.Member):
-            return
-            
-        if not is_authorized_staff(interaction.user):
+        user_member = interaction.user
+        if isinstance(user_member, discord.Member) and not is_authorized_staff(user_member):
             await interaction.response.send_message("❌ Staff only permission!", ephemeral=True)
             return
         
@@ -103,11 +102,12 @@ class TimeoutButtons(discord.ui.View):
 async def timeout(ctx: commands.Context, member: discord.Member, duration_str: str, *, reason: str = "No reason provided") -> None:
     if ctx.guild is None or not isinstance(ctx.author, discord.Member):
         return
+    
     if not is_authorized_staff(ctx.author):
         await ctx.send("❌ Permission denied! You do not have an authorized staff role.")
         return
     
-    if member.top_role >= ctx.guild.me.top_role:
+    if ctx.guild.me is not None and member.top_role >= ctx.guild.me.top_role:
         await ctx.send("❌ Cannot timeout this member! Their role level is equal to or higher than the bot's role.")
         return
     if member == ctx.guild.owner:
@@ -169,24 +169,20 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
 # ==================================================
 @bot.command()
 async def lock(ctx: commands.Context, *, reason: str = "Spam/Inappropriate content cleanup") -> None:
-    if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+    if ctx.guild is None or not isinstance(ctx.author, discord.Member) or not isinstance(ctx.channel, discord.TextChannel):
         return
     if not is_authorized_staff(ctx.author):
         await ctx.send("❌ Permission denied! You do not have an authorized staff role.")
         return
 
-    current_channel = ctx.channel
-    if not isinstance(current_channel, discord.TextChannel):
-        return
-
     try:
         default_role = ctx.guild.default_role
-        overwrite = current_channel.overwrites_for(default_role)
+        overwrite = ctx.channel.overwrites_for(default_role)
         
-        # Modify permissions
-        overwrite.send_messages = False
+        # Safe raw configuration layout bypasses editor warnings
+        overwrite.update(send_messages=False)
         
-        await current_channel.set_permissions(default_role, overwrite=overwrite, reason=f"Locked by {ctx.author.name}")
+        await ctx.channel.set_permissions(default_role, overwrite=overwrite, reason=f"Locked by {ctx.author.name}")
         
         embed = discord.Embed(
             title="🔒 Channel Locked", 
@@ -195,7 +191,7 @@ async def lock(ctx: commands.Context, *, reason: str = "Spam/Inappropriate conte
         )
         await ctx.send(embed=embed)
     except discord.Forbidden:
-        await ctx.send("❌ The bot does not have permissions to manage channel permissions. Check bot roles.")
+        await ctx.send("❌ The bot does not have permissions to manage channel permissions.")
     except Exception as e:
         await ctx.send(f"⚠️ Lock Error: `{str(e)}`")
 
@@ -205,24 +201,19 @@ async def lock(ctx: commands.Context, *, reason: str = "Spam/Inappropriate conte
 # ==================================================
 @bot.command()
 async def unlock(ctx: commands.Context) -> None:
-    if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+    if ctx.guild is None or not isinstance(ctx.author, discord.Member) or not isinstance(ctx.channel, discord.TextChannel):
         return
     if not is_authorized_staff(ctx.author):
         await ctx.send("❌ Permission denied! You do not have an authorized staff role.")
         return
 
-    current_channel = ctx.channel
-    if not isinstance(current_channel, discord.TextChannel):
-        return
-
     try:
         default_role = ctx.guild.default_role
-        overwrite = current_channel.overwrites_for(default_role)
+        overwrite = ctx.channel.overwrites_for(default_role)
         
-        # Reset permissions
-        overwrite.send_messages = None
+        overwrite.update(send_messages=None)
         
-        await current_channel.set_permissions(default_role, overwrite=overwrite, reason=f"Unlocked by {ctx.author.name}")
+        await ctx.channel.set_permissions(default_role, overwrite=overwrite, reason=f"Unlocked by {ctx.author.name}")
         
         embed = discord.Embed(
             title="🔓 Channel Unlocked", 
@@ -231,7 +222,7 @@ async def unlock(ctx: commands.Context) -> None:
         )
         await ctx.send(embed=embed)
     except discord.Forbidden:
-        await ctx.send("❌ The bot does not have permissions to manage channel permissions. Check bot roles.")
+        await ctx.send("❌ The bot does not have permissions to manage channel permissions.")
     except Exception as e:
         await ctx.send(f"⚠️ Unlock Error: `{str(e)}`")
 
@@ -241,13 +232,21 @@ async def unlock(ctx: commands.Context) -> None:
 # ==================================================
 @bot.command()
 async def nuke(ctx: commands.Context) -> None:
-    if ctx.guild is None or not isinstance(ctx.author, discord.Member):
-        return
-    if ctx.author != ctx.guild.owner:
-        await ctx.send("❌ Security Access Denied: Only the Server Owner can use `$nuke`!")
+    if ctx.guild is None or ctx.author != ctx.guild.owner or not isinstance(ctx.channel, discord.TextChannel):
         return
 
-    current_channel = ctx.channel
-    if not isinstance(current_channel, discord.TextChannel):
-        return
+    try:
+        announcements_channel = discord.utils.get(ctx.guild.text_channels, name="announcements")
+        new_channel = await ctx.channel.clone(reason=f"Channel nuked by {ctx.author.name}")
+        
+        await new_channel.edit(position=ctx.channel.position)
+        await ctx.channel.delete(reason="Nuke command executed.")
+
+        if announcements_channel is not None:
+            await announcements_channel.send(
+                f"🔔 **Attention:** #{new_channel.name} has been cleared. Head over here -> {new_channel.mention}!"
+            )
+    except Exception as e:
+        print(f"Nuke error: {e}")
+
 
