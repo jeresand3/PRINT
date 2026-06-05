@@ -81,10 +81,15 @@ class TimeoutButtons(discord.ui.View):
             await interaction.response.send_message("❌ Bot doesn't have permissions to untimeout this user!", ephemeral=True)
 
 
+# ==================================================
+# ⏱️ TIMEOUT COMMAND WITH CANVAS GENERATION
+# ==================================================
 @bot.command()
 async def timeout(ctx: commands.Context, member: discord.Member, duration_str: str, *, reason: str = "No reason provided"):
-    if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+    # Fix: Ensure ctx.guild exists and author is a server Member
+    if not ctx.guild or not isinstance(ctx.author, discord.Member):
         return
+        
     if not is_authorized_staff(ctx.author):
         await ctx.send("❌ Permission denied!")
         return
@@ -108,7 +113,8 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
         return
 
     try:
-        base_img = Image.open("image_bb317f75.png").convert("RGBA")
+        # Opens mog.png as the background layer asset
+        base_img = Image.open("mog.png").convert("RGBA")
         draw = ImageDraw.Draw(base_img)
         font = ImageFont.load_default()
         
@@ -143,7 +149,6 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
         embed = discord.Embed(color=0x2b2d31)
         embed.set_image(url="attachment://dynamic_timeout.png")
 
-        # FIX: Passing the file object inside the files list prevents the image from appearing twice
         await ctx.send(embed=embed, file=discord_file, view=TimeoutButtons(member))
 
     except Exception as e:
@@ -155,7 +160,8 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
 # ==================================================
 @bot.command()
 async def lock(ctx: commands.Context):
-    if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+    # Fix: Explicitly check that ctx.guild exists and author is a server Member
+    if not ctx.guild or not isinstance(ctx.author, discord.Member):
         return
         
     if not is_authorized_staff(ctx.author):
@@ -167,9 +173,34 @@ async def lock(ctx: commands.Context):
         return
 
     try:
-        # Changes the send_messages permission to False for the baseline @everyone role
+        # Clear message creation permissions for baseline server members
         await current_channel.set_permissions(ctx.guild.default_role, send_messages=False, reason=f"Channel locked by {ctx.author.name}")
         await ctx.send(f"🔒 **{current_channel.mention} has been locked down.** Members without explicit staff overrides no longer have permission to send messages here.")
+    except discord.Forbidden:
+        await ctx.send("❌ I lack the required permissions to modify permissions on this channel.")
+
+
+# ==================================================
+# 🔓 UNLOCK CHANNEL COMMAND
+# ==================================================
+@bot.command()
+async def unlock(ctx: commands.Context):
+    # Fix: Explicitly check that ctx.guild exists and author is a server Member
+    if not ctx.guild or not isinstance(ctx.author, discord.Member):
+        return
+        
+    if not is_authorized_staff(ctx.author):
+        await ctx.send("❌ Permission denied!")
+        return
+
+    current_channel = ctx.channel
+    if not isinstance(current_channel, discord.TextChannel):
+        return
+
+    try:
+        # Reset baseline message permissions to default tracking states
+        await current_channel.set_permissions(ctx.guild.default_role, send_messages=None, reason=f"Channel unlocked by {ctx.author.name}")
+        await ctx.send(f"🔓 **{current_channel.mention} is now unlocked.** Regular messaging permissions have been restored.")
     except discord.Forbidden:
         await ctx.send("❌ I lack the required permissions to modify permissions on this channel.")
 
@@ -179,7 +210,8 @@ async def lock(ctx: commands.Context):
 # ==================================================
 @bot.command()
 async def nuke(ctx: commands.Context):
-    if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+    # Fix: Explicitly check that ctx.guild exists and author is a server Member
+    if not ctx.guild or not isinstance(ctx.author, discord.Member):
         return
 
     if ctx.author != ctx.guild.owner:
@@ -204,9 +236,8 @@ async def nuke(ctx: commands.Context):
 
     # 4. If #announcements exists, send a link to redirect users out smoothly
     if announcements_channel is not None:
-        # Sends a message in #announcements pointing to the new channel copy to draw active users out
         await announcements_channel.send(
-            f"🔔 **Attention:** #{new_channel.name} has been cleared. Head over here -> {announcements_channel.mention}!"
+            f"🔔 **Attention:** #{new_channel.name} has been cleared. Head over here -> {new_channel.mention}!"
         )
 
 
