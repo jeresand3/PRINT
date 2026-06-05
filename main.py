@@ -91,13 +91,11 @@ async def timeout(ctx: commands.Context, member: discord.Member, duration_str: s
     await member.timeout(time_delta, reason=reason)
 
     try:
-        # Grabs the local image file sitting right next to main.py
+        # Load the file locally from your repository structure
         discord_file = discord.File("image_bb317f75.png", filename="timeout_card.png")
 
-        embed = discord.Embed(color=discord.Color.from_str("#0d0f11"))
-        embed.set_image(url="attachment://timeout_card.png")
-
-        await ctx.send(file=discord_file, embed=embed, view=TimeoutButtons(member))
+        # Sends the image asset completely raw and directly into chat (removing the embed wrapper block)
+        await ctx.send(file=discord_file, view=TimeoutButtons(member))
 
     except Exception as e:
         await ctx.send(f"⚠️ System Error reading local file: `{str(e)}`", view=TimeoutButtons(member))
