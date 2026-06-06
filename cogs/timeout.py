@@ -4,7 +4,7 @@ import re
 import urllib.request
 import discord
 from discord.ext import commands
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from typing import Any
 
 def is_authorized_staff(member: Any) -> bool:
@@ -22,10 +22,11 @@ def parse_duration(duration_str: str) -> datetime.timedelta | None:
 class TimeoutButtons(discord.ui.View):
     def __init__(self, target_member: discord.Member):
         super().__init__(timeout=None)
-        self.target_member = target_member
+        self.target_member: discord.Member = target_member
 
+    # noinspection PyUnusedLocal
     @discord.ui.button(label="Untimeout", style=discord.ButtonStyle.green)
-    async def untimeout_callback(self, interaction: discord.Interaction, _button: discord.ui.Button):
+    async def untimeout_callback(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         if not isinstance(interaction.user, discord.Member):
             return
             
@@ -34,8 +35,9 @@ class TimeoutButtons(discord.ui.View):
             return
         
         try:
-            await self.target_member.timeout(None)
-            await interaction.response.send_message(f"✅ {self.target_member.mention} untimed out early by {interaction.user.mention}!")
+            member_to_untimeout: discord.Member = getattr(self, "target_member")
+            await member_to_untimeout.timeout(None)
+            await interaction.response.send_message(f"✅ {member_to_untimeout.mention} untimed out early by {interaction.user.mention}!")
         except discord.Forbidden:
             await interaction.response.send_message("❌ Bot doesn't have permissions to untimeout this user!", ephemeral=True)
 
@@ -71,19 +73,24 @@ class TimeoutCog(commands.Cog):
             return
 
         try:
-            base_img = Image.new("RGBA", (1000, 500), "#2f3136")
+            base_img = Image.new("RGBA", (1000, 500), "#1e1f22")
             draw = ImageDraw.Draw(base_img)
-            font = ImageFont.load_default()
             
-            # Fixed drawing format to satisfy PyCharm's strict type analyzer
-            draw.rectangle([20, 20, 980, 480], outline="#00e676", width=3)
+            # Formatted with explicit floats to silence Python 3.14 sequence expectations
+            draw.rectangle([10.0, 10.0, 990.0, 490.0], outline="#00e676", width=4)
+            draw.line([40.0, 260.0, 960.0, 260.0], fill="#313338", width=3)
             
-            draw.text((300, 150), f"USER: @{member.name}", fill="#00e676", font=font, anchor="lm")
-            draw.text((300, 190), f"ID: {member.id}", fill="#a0a0a0", font=font, anchor="lm")
+            draw.text((280, 110), f"ISOLATED: @{member.name}", fill="#00e676", anchor="lm")
+            draw.text((280, 170), f"ID: {member.id}", fill="#949ba4", anchor="lm")
             
-            draw.text((150, 350), f"MODERATOR:\n@{ctx.author.name}", fill="#00e676", font=font, anchor="mm")
-            draw.text((500, 350), f"DURATION:\n{duration_str}", fill="#ffffff", font=font, anchor="mm")
-            draw.text((850, 350), f"REASON:\n{reason}", fill="#ffffff", font=font, anchor="mm")
+            draw.text((180, 330), "MODERATOR", fill="#00e676", anchor="mm")
+            draw.text((180, 390), f"@{ctx.author.name}", fill="#ffffff", anchor="mm")
+            
+            draw.text((500, 330), "DURATION", fill="#00e676", anchor="mm")
+            draw.text((500, 390), f"{duration_str}", fill="#ffffff", anchor="mm")
+            
+            draw.text((820, 330), "REASON", fill="#00e676", anchor="mm")
+            draw.text((820, 390), f"{reason}", fill="#ffffff", anchor="mm")
 
             try:
                 avatar_url = member.display_avatar.with_format("png").with_size(256).url
@@ -91,14 +98,14 @@ class TimeoutCog(commands.Cog):
                 with urllib.request.urlopen(req, timeout=5) as pfp_res:
                     pfp_img = Image.open(io.BytesIO(pfp_res.read())).convert("RGBA")
                 
-                pfp_size = (120, 120)
+                pfp_size = (150, 150)
                 pfp_img = pfp_img.resize(pfp_size)
                 
                 mask = Image.new("L", pfp_size, 0)
                 mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse((0, 0, pfp_size, pfp_size), fill=255)
+                mask_draw.ellipse((0.0, 0.0, 150.0, 150.0), fill=255)
                 
-                base_img.paste(pfp_img, (120, 110), mask=mask)
+                base_img.paste(pfp_img, (80, 65), mask=mask)
             except Exception as pfp_error:
                 print(f"Skipping profile avatar drawing layer: {pfp_error}")
 
