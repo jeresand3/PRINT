@@ -4,7 +4,7 @@ import re
 import urllib.request
 import discord
 from discord.ext import commands
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from typing import Any
 
 def is_authorized_staff(member: Any) -> bool:
@@ -73,39 +73,43 @@ class TimeoutCog(commands.Cog):
             return
 
         try:
-            base_img = Image.new("RGBA", (1000, 500), "#1e1f22")
+            # FIX: Opens your uploaded image template directly from the root folder instead of drawing a gray box
+            base_img = Image.open("mog.png").convert("RGBA")
             draw = ImageDraw.Draw(base_img)
+            font = ImageFont.load_default()
             
-            # Formatted with explicit floats to silence Python 3.14 sequence expectations
-            draw.rectangle([10.0, 10.0, 990.0, 490.0], outline="#00e676", width=4)
-            draw.line([40.0, 260.0, 960.0, 260.0], fill="#313338", width=3)
+            # --- CARD POSITIONING ADJUSTED FOR YOUR GREEN TEMPLATE ---
+            # 1. Main Center Container Box (User Name and Unique Identification Number)
+            draw.text((585, 415), f"@{member.name}", fill="#00e676", font=font, anchor="mm")
+            draw.text((585, 455), f"ID: {member.id}", fill="#a0a0a0", font=font, anchor="mm")
             
-            draw.text((280, 110), f"ISOLATED: @{member.name}", fill="#00e676", anchor="lm")
-            draw.text((280, 170), f"ID: {member.id}", fill="#949ba4", anchor="lm")
+            # 2. Bottom Row Info Panels (Centered within the lower ornamental border containers)
+            # Left Container: Responsible Moderator
+            draw.text((395, 760), f"@{ctx.author.name}", fill="#ffffff", font=font, anchor="mm")
             
-            draw.text((180, 330), "MODERATOR", fill="#00e676", anchor="mm")
-            draw.text((180, 390), f"@{ctx.author.name}", fill="#ffffff", anchor="mm")
+            # Center Container: Total Penalization Duration Window
+            draw.text((615, 760), f"{duration_str}", fill="#ffffff", font=font, anchor="mm")
             
-            draw.text((500, 330), "DURATION", fill="#00e676", anchor="mm")
-            draw.text((500, 390), f"{duration_str}", fill="#ffffff", anchor="mm")
-            
-            draw.text((820, 330), "REASON", fill="#00e676", anchor="mm")
-            draw.text((820, 390), f"{reason}", fill="#ffffff", anchor="mm")
+            # Right Container: Infraction Cause Reason
+            draw.text((830, 760), f"{reason}", fill="#ffffff", font=font, anchor="mm")
 
+            # --- AVATAR LAYERING (Pasted right into the top-right circular window frame) ---
             try:
                 avatar_url = member.display_avatar.with_format("png").with_size(256).url
                 req = urllib.request.Request(avatar_url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=5) as pfp_res:
                     pfp_img = Image.open(io.BytesIO(pfp_res.read())).convert("RGBA")
                 
-                pfp_size = (150, 150)
+                # Resized to fill the circle frame perfectly
+                pfp_size = (112, 112)
                 pfp_img = pfp_img.resize(pfp_size)
                 
                 mask = Image.new("L", pfp_size, 0)
                 mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse((0.0, 0.0, 150.0, 150.0), fill=255)
+                mask_draw.ellipse((0.0, 0.0, 112.0, 112.0), fill=255)
                 
-                base_img.paste(pfp_img, (80, 65), mask=mask)
+                # Coordinates matching your template's top-right circle center
+                base_img.paste(pfp_img, (838, 62), mask=mask)
             except Exception as pfp_error:
                 print(f"Skipping profile avatar drawing layer: {pfp_error}")
 
