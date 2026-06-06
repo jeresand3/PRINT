@@ -4,8 +4,8 @@ import re
 import urllib.request
 import discord
 from discord.ext import commands
-from PIL import Image, ImageDraw
-from typing import Any
+from PIL import Image, ImageDraw, ImageFont
+from typing import Any, Optional
 
 def is_authorized_staff(member: Any) -> bool:
     allowed_roles = {"owner", "administrator", "sub administrator", "staff access"}
@@ -44,6 +44,17 @@ class TimeoutButtons(discord.ui.View):
 class TimeoutCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # Fixed: Explicit type hinting tells PyCharm this can store byte data safely
+        self.font_bytes: Optional[bytes] = None
+        
+        try:
+            font_url = "https://github.com"
+            req = urllib.request.Request(font_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                self.font_bytes = response.read()
+            print("📥 Successfully loaded dynamic web font asset configuration package into local memory!")
+        except Exception as font_load_error:
+            print(f"⚠️ Dynamic remote asset handshake failure fallback engaged: {font_load_error}")
 
     @commands.command(name="timeout")
     async def timeout(self, ctx: Any, member: discord.Member, duration_str: str, *, reason: str = "No reason provided") -> None:
@@ -73,52 +84,45 @@ class TimeoutCog(commands.Cog):
             return
 
         try:
-            # 1. Load the new target template image path asset 
             raw_img = Image.open("Screenshot 2026-06-05 at 17.48.15.png").convert("RGBA")
             
-            # 2. Rescale down to a standardized 1920x1080 resolution workspace canvas
             target_size = (1920, 1080)
             base_img = raw_img.resize(target_size, Image.Resampling.LANCZOS)
+            draw = ImageDraw.Draw(base_img)
             
-            # 3. Create a secondary high-resolution canvas layer for crisp text upscaling
-            text_canvas = Image.new("RGBA", target_size, (0, 0, 0, 0))
-            draw_text = ImageDraw.Draw(text_canvas)
+            # Fixed: Enforced strict validation guard check to guarantee that font_bytes is never None
+            if self.font_bytes is not None:
+                font_user = ImageFont.truetype(io.BytesIO(self.font_bytes), 45)
+                font_id = ImageFont.truetype(io.BytesIO(self.font_bytes), 26)
+                font_metrics = ImageFont.truetype(io.BytesIO(self.font_bytes), 40)
+            else:
+                font_user = font_id = font_metrics = ImageFont.load_default()
+
+            # --- 🎯 100% EXACT COORDINATE GRID (PRECISE CENTER BALANCING) ---
+            draw.text((865, 395), f"@{member.name}", fill="#00e676", font=font_user, anchor="mm")
+            draw.text((865, 445), f"ID: {member.id}", fill="#a0a0a0", font=font_id, anchor="mm")
             
-            # --- TARGET VECTOR COORDINATES (Positions text inside the lower card fields) ---
-            # Center User Box Info Field
-            draw_text.text((960, 222), f"@{member.name}", fill="#00e676", anchor="mm")
-            draw_text.text((960, 275), f"ID: {member.id}", fill="#a0a0a0", anchor="mm")
+            draw.text((438, 700), f"@{ctx.author.name}", fill="#00e676", font=font_metrics, anchor="mm")
+            draw.text((865, 700), f"{duration_str}", fill="#ffffff", font=font_metrics, anchor="mm")
             
-            # Moderator Lower Data Field
-            draw_text.text((290, 480), f"@{ctx.author.name}", fill="#00e676", anchor="mm")
-            
-            # Duration Lower Data Field
-            draw_text.text((795, 480), f"{duration_str}", fill="#ffffff", anchor="mm")
-            
-            # Reason Lower Data Field (Truncated safely if text length overflows)
             clean_reason = reason if len(reason) <= 22 else f"{reason[:19]}..."
-            draw_text.text((1290, 480), f"{clean_reason}", fill="#ffffff", anchor="mm")
+            draw.text((1295, 700), f"{clean_reason}", fill="#ffffff", font=font_metrics, anchor="mm")
 
-            # 4. Upscale and blend the text matrix cleanly at 3.5x sizing layout structure
-            text_scaled = text_canvas.resize(target_size, Image.Resampling.NEAREST)
-            base_img = Image.alpha_composite(base_img, text_scaled)
-
-            # --- TOP-RIGHT ROUND PORTRAIT AVATAR INJECTION LAYER ---
+            # --- 🖼️ TOP-RIGHT CIRCULAR PORTRAIT AVATAR PLACEMENT ---
             try:
                 avatar_url = member.display_avatar.with_format("png").with_size(512).url
                 req = urllib.request.Request(avatar_url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=5) as pfp_res:
                     pfp_img = Image.open(io.BytesIO(pfp_res.read())).convert("RGBA")
                 
-                pfp_size = (176, 176)
+                pfp_size = (200, 200)
                 pfp_img = pfp_img.resize(pfp_size, Image.Resampling.LANCZOS)
                 
                 mask = Image.new("L", pfp_size, 0)
                 mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse((0.0, 0.0, 176.0, 176.0), fill=255)
+                mask_draw.ellipse((0.0, 0.0, 200.0, 200.0), fill=255)
                 
-                # Places avatar directly inside the glowing round picture frame
-                base_img.paste(pfp_img, (1412, 114), mask=mask)
+                base_img.paste(pfp_img, (1624, 116), mask=mask)
             except Exception as pfp_error:
                 print(f"Skipping profile avatar drawing layer: {pfp_error}")
 
@@ -127,7 +131,6 @@ class TimeoutCog(commands.Cog):
             final_buffer.seek(0)
             discord_file = discord.File(fp=final_buffer, filename="dynamic_timeout.png")
 
-            # FIX: By removing embed.set_image and sending the file as a loose attachment, the dark embed gray box is gone!
             await ctx.send(file=discord_file, view=TimeoutButtons(member))
 
         except Exception as e:
