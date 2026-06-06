@@ -80,17 +80,40 @@ class TimeoutCog(commands.Cog):
             target_size = (1920, 1080)
             base_img = raw_img.resize(target_size, Image.Resampling.LANCZOS)
             draw = ImageDraw.Draw(base_img)
-            font = ImageFont.load_default()
             
-            # --- PRECISE POSITIONING COORDINATES FOR 1920x1080 CANVAS ---
-            # Center USER box text placement coordinates
-            draw.text((1120, 605), f"@{member.name}", fill="#00e676", font=font, anchor="mm")
-            draw.text((1120, 655), f"ID: {member.id}", fill="#a0a0a0", font=font, anchor="mm")
+            # 3. Load dynamic, heavy server fonts for maximum legibility
+            try:
+                # Use standard Liberation/Arial font available on Render Linux systems
+                font_user = ImageFont.truetype("LiberationSans-Bold.ttf", 46)
+                font_id = ImageFont.truetype("LiberationSans-Regular.ttf", 28)
+                font_metrics = ImageFont.truetype("LiberationSans-Bold.ttf", 36)
+            except IOError:
+                try:
+                    # Fallback option if Liberation is missing
+                    font_user = ImageFont.truetype("DejaVuSans-Bold.ttf", 46)
+                    font_id = ImageFont.truetype("DejaVuSans-Regular.ttf", 28)
+                    font_metrics = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
+                except IOError:
+                    # Final safety fallback using default scaled blocks
+                    font_user = font_id = font_metrics = ImageFont.load_default()
             
-            # Bottom row modular meta boxes text placement coordinates
-            draw.text((580, 890), f"@{ctx.author.name}", fill="#ffffff", font=font, anchor="mm")
-            draw.text((965, 890), f"{duration_str}", fill="#ffffff", font=font, anchor="mm")
-            draw.text((1350, 890), f"{reason}", fill="#ffffff", font=font, anchor="mm")
+            # --- PRECISE POSITIONING COORDINATES FOR YOUR 1920x1080 GREEN TEMPLATE ---
+            
+            # Center USER container box (Displays username and raw Discord user ID below it)
+            draw.text((960, 222), f"@{member.name}", fill="#00e676", font=font_user, anchor="mm")
+            draw.text((960, 275), f"ID: {member.id}", fill="#a0a0a0", font=font_id, anchor="mm")
+            
+            # Bottom row modular meta boxes (Calculated to sit beautifully inside each individual grid container)
+            # Left panel box: Responsible Moderator User
+            draw.text((435, 415), f"@{ctx.author.name}", fill="#00e676", font=font_metrics, anchor="mm")
+            
+            # Center panel box: Total Penalization Duration
+            draw.text((960, 415), f"{duration_str}", fill="#ffffff", font=font_metrics, anchor="mm")
+            
+            # Right panel box: Infraction Cause Reason
+            # If the reason string is excessively long, we slice it so it doesn't leak out of the box borders
+            clean_reason = reason if len(reason) <= 22 else f"{reason[:19]}..."
+            draw.text((1485, 415), f"{clean_reason}", fill="#ffffff", font=font_metrics, anchor="mm")
 
             # --- TOP-RIGHT AVATAR GENERATION FRAME LAYER ---
             try:
@@ -99,16 +122,17 @@ class TimeoutCog(commands.Cog):
                 with urllib.request.urlopen(req, timeout=5) as pfp_res:
                     pfp_img = Image.open(io.BytesIO(pfp_res.read())).convert("RGBA")
                 
-                # Scaled to fit perfectly into the top-right frame circle area
-                pfp_size = (215, 215)
+                # Resized down precisely to snap flush inside the circular border vector diameter
+                pfp_size = (184, 184)
                 pfp_img = pfp_img.resize(pfp_size, Image.Resampling.LANCZOS)
                 
+                # Round crop clipping mask boundary matrix setup
                 mask = Image.new("L", pfp_size, 0)
                 mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse((0.0, 0.0, 215.0, 215.0), fill=255)
+                mask_draw.ellipse((0.0, 0.0, 184.0, 184.0), fill=255)
                 
-                # Position coordinates centered directly over the circle graphic vector
-                base_img.paste(pfp_img, (1572, 100), mask=mask)
+                # POSITION RECALCULATED: Shifted to center perfectly inside your glowing top-right frame vector ring
+                base_img.paste(pfp_img, (1515, 122), mask=mask)
             except Exception as pfp_error:
                 print(f"Skipping profile avatar drawing layer: {pfp_error}")
 
