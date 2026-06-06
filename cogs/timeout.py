@@ -22,7 +22,7 @@ def parse_duration(duration_str: str) -> datetime.timedelta | None:
 class TimeoutButtons(discord.ui.View):
     def __init__(self, target_member: discord.Member):
         super().__init__(timeout=None)
-        self.target_member: discord.Member = target_member
+        self.target_member = target_member
 
     # noinspection PyUnusedLocal
     @discord.ui.button(label="Untimeout", style=discord.ButtonStyle.green)
@@ -73,43 +73,42 @@ class TimeoutCog(commands.Cog):
             return
 
         try:
-            # FIX: Opens your uploaded image template directly from the root folder instead of drawing a gray box
-            base_img = Image.open("mog.png").convert("RGBA")
+            # 1. Load your raw template image layer
+            raw_img = Image.open("mog.png").convert("RGBA")
+            
+            # 2. Scale cleanly to crisp 16:9 widescreen dimensions
+            target_size = (1920, 1080)
+            base_img = raw_img.resize(target_size, Image.Resampling.LANCZOS)
             draw = ImageDraw.Draw(base_img)
             font = ImageFont.load_default()
             
-            # --- CARD POSITIONING ADJUSTED FOR YOUR GREEN TEMPLATE ---
-            # 1. Main Center Container Box (User Name and Unique Identification Number)
-            draw.text((585, 415), f"@{member.name}", fill="#00e676", font=font, anchor="mm")
-            draw.text((585, 455), f"ID: {member.id}", fill="#a0a0a0", font=font, anchor="mm")
+            # --- PRECISE POSITIONING COORDINATES FOR 1920x1080 CANVAS ---
+            # Center USER box text placement coordinates
+            draw.text((1120, 605), f"@{member.name}", fill="#00e676", font=font, anchor="mm")
+            draw.text((1120, 655), f"ID: {member.id}", fill="#a0a0a0", font=font, anchor="mm")
             
-            # 2. Bottom Row Info Panels (Centered within the lower ornamental border containers)
-            # Left Container: Responsible Moderator
-            draw.text((395, 760), f"@{ctx.author.name}", fill="#ffffff", font=font, anchor="mm")
-            
-            # Center Container: Total Penalization Duration Window
-            draw.text((615, 760), f"{duration_str}", fill="#ffffff", font=font, anchor="mm")
-            
-            # Right Container: Infraction Cause Reason
-            draw.text((830, 760), f"{reason}", fill="#ffffff", font=font, anchor="mm")
+            # Bottom row modular meta boxes text placement coordinates
+            draw.text((580, 890), f"@{ctx.author.name}", fill="#ffffff", font=font, anchor="mm")
+            draw.text((965, 890), f"{duration_str}", fill="#ffffff", font=font, anchor="mm")
+            draw.text((1350, 890), f"{reason}", fill="#ffffff", font=font, anchor="mm")
 
-            # --- AVATAR LAYERING (Pasted right into the top-right circular window frame) ---
+            # --- TOP-RIGHT AVATAR GENERATION FRAME LAYER ---
             try:
-                avatar_url = member.display_avatar.with_format("png").with_size(256).url
+                avatar_url = member.display_avatar.with_format("png").with_size(512).url
                 req = urllib.request.Request(avatar_url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req, timeout=5) as pfp_res:
                     pfp_img = Image.open(io.BytesIO(pfp_res.read())).convert("RGBA")
                 
-                # Resized to fill the circle frame perfectly
-                pfp_size = (112, 112)
-                pfp_img = pfp_img.resize(pfp_size)
+                # Scaled to fit perfectly into the top-right frame circle area
+                pfp_size = (215, 215)
+                pfp_img = pfp_img.resize(pfp_size, Image.Resampling.LANCZOS)
                 
                 mask = Image.new("L", pfp_size, 0)
                 mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse((0.0, 0.0, 112.0, 112.0), fill=255)
+                mask_draw.ellipse((0.0, 0.0, 215.0, 215.0), fill=255)
                 
-                # Coordinates matching your template's top-right circle center
-                base_img.paste(pfp_img, (838, 62), mask=mask)
+                # Position coordinates centered directly over the circle graphic vector
+                base_img.paste(pfp_img, (1572, 100), mask=mask)
             except Exception as pfp_error:
                 print(f"Skipping profile avatar drawing layer: {pfp_error}")
 
